@@ -1,0 +1,11 @@
+########### goArm v0.1  notes  #################
+IN-SCOPE
+1. integration with GTP engine to start/end game, setup board, make moves, get captured.
+2. calibration by 3 points
+3. make move basic method (i.e. take the stone from pre-defined place, move to vertices provided, remove captured stones)
+
+OUT-OF-SCOPE (next versions)
+1. vision based position discovery and interpretation (OpenMV)
+2. vision based stone position discovery
+3. web service to control the program
+
