@@ -15,9 +15,9 @@ def dump_file(record, filename, type):
 #   .......
 #   .......
 #   B.....C
-A = [10, 10, 10]
+A = [10, 15, 20]
 B = [15, 15, 15]
-C = [20, 20, 20]
+C = [20, 21, 22]
 board_size = 9
 
 black_stone_matrix = [[1, 1, 1],
@@ -37,8 +37,8 @@ white_stone_matrix = [[2, 1, 1],
 
 env = {"board": [A, B, C],
        "board size": board_size,
-       "black_stone_matrix": [black_stone_matrix],
-       "white_stone_matrix": [white_stone_matrix]}
+       "black_stone_matrix": black_stone_matrix,
+       "white_stone_matrix": white_stone_matrix}
 
 dump_file(env, "env", "yaml")
 dump_file(env, "env", "json")
