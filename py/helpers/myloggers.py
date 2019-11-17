@@ -4,7 +4,7 @@ import logging
 def getLogger(name):
     LOG = logging.getLogger(name)
     LOG.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - (%(name)s) [%(levelname)s] - %(message)s')
     fh = logging.FileHandler('log.txt')
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
