@@ -14,7 +14,7 @@ class GoArm:
         self.board = Board(conffile=conffile)
         self.stones = Stones(conffile=conffile)
         self.max_height = max(self.board.max_height, self.stones.max_height) + 20
-        self.arm = uarm.SwiftAPI(filters={'hwid': 'USB VID:PID=0403:6001'}, callback_thread_pool_size=1)
+        self.arm = uarm.SwiftAPI(port='COM4', filters={'hwid': 'USB VID:PID=0403:6001 SER=A1068MLHA'}, callback_thread_pool_size=1)
         self.arm.waiting_ready()
         LOG.info("Arm fully initialised")
 
@@ -44,13 +44,13 @@ class GoArm:
                 LOG.debug("Command {} succeeded, args = {}{}".format(command.__name__, args, kwargs))
                 return True  # log success
             else:
-                LOG.error("Command {} failed, args = {}{}".format(command.__name__, args, kwargs))
+                LOG.error("Command {} failed with result {}, args = {}{}".format(command.__name__, r, args, kwargs))
                 self._safe_stop()
                 raise Exception("Emergency stop!")
 
     def set_position(self, vertex=None):
         vertex = self._vertex_to_real(vertex)
-        return self._run_arm_command(self.arm.set_position, x=vertex[0], y=vertex[1], z=vertex[2])
+        return self._run_arm_command(self.arm.set_position, x=vertex[0], y=vertex[1], z=vertex[2], speed=100)
 
     def set_pump(self, on=True):
         res = self._run_arm_command(self.arm.set_pump, on=on)
@@ -113,15 +113,18 @@ class GoArm:
                 self.remove_stone(vertex=action.get('vertex'))
         self.set_position(self.safe_position)
 
+    def disconnect(self):
+        return self.arm.disconnect()
+
     def _get_current_position(self):
-        return
+        return self.arm.get_position()
 
     def _calibrate(self):
         self.set_position()
-        cur_position = self.safe_position
+        cur_position = self._get_current_position()
         i = ''
         while i != 'q':
-            print("Current position: {}".format(cur_position))
+            print("Current position: {}".format(self._get_current_position()))
             i = input('Adjustment: ')
             a = i.replace(' ', '').split(',')
             new_position = [(cur_position[i] + float(a[i])) for i in range(3)]
@@ -164,22 +167,20 @@ if __name__ == "__main__":
         res = []
         col = 6
         for i in range(col):
-            v = [int(a[j] + i*( (b[j] - a[j])/(col - 1) ) ) for j in range(3)]
+            v = [round(a[j] + i*( (b[j] - a[j])/(col - 1) ), 1) for j in range(3)]
             res.append(v)
 
         for i in range(col):
-            v = [int(res[i][j] + (c[j] - b[j])) for j in range(3)]
+            v = [round(res[i][j] + (c[j] - b[j]), 1) for j in range(3)]
             res.append(v)
 
         for i in range(col-1):
-            v = [round((res[col+i+1][j] + res[i][j]) / 2) for j in range(3)]
+            v = [round((res[col+i+1][j] + res[i][j]) / 2, 1) for j in range(3)]
             res.append(v)
         return res
 
-    r = get_bowl_vertex([1,1,1],[1,6,1],[3,6,1])
-
-    print(r[:6])
-    print('     {}'.format(r[12:]))
-    print(r[6:12])
-
+    r = get_bowl_vertex([107.0, -108.5, 11.0],[232.0, -111.5, 15.0],[233.5, -150.5, 16.0])
+    print(r)
+    r = get_bowl_vertex([108.5, 149.5, 13.0], [233.0, 154.0, 17.0], [232.0, 114.0, 17.0])
+    print(r)
 
