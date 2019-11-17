@@ -11,8 +11,8 @@ class ProblemCollection:
 
     def __init__(self):
         #read problems here
-        self.counter = [0, -1, -1, -1]
         self.problems = yaml.load(open(self.problems_file))
+        self.counter = {level: 0 for level in self.problems.keys()}
 
     def get_next_problem(self, level):
         if self.counter[level] >= len(self.problems[level]):

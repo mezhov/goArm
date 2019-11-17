@@ -19,7 +19,9 @@ class GoArm:
         LOG.info("Arm fully initialised")
 
     def _vertex_to_real(self, vertex):
-        if type(vertex) is list:
+        if vertex is None:
+            return self.safe_position
+        elif type(vertex) is list:
             if len(vertex) == 2:
                 return self.board.get_real_vertex(vertex)
             elif len(vertex) == 3:
@@ -46,7 +48,7 @@ class GoArm:
                 self._safe_stop()
                 raise Exception("Emergency stop!")
 
-    def set_position(self, vertex):
+    def set_position(self, vertex=None):
         vertex = self._vertex_to_real(vertex)
         return self._run_arm_command(self.arm.set_position, x=vertex[0], y=vertex[1], z=vertex[2])
 
@@ -111,38 +113,73 @@ class GoArm:
                 self.remove_stone(vertex=action.get('vertex'))
         self.set_position(self.safe_position)
 
+    def _get_current_position(self):
+        return
+
+    def _calibrate(self):
+        self.set_position()
+        cur_position = self.safe_position
+        i = ''
+        while i != 'q':
+            print("Current position: {}".format(cur_position))
+            i = input('Adjustment: ')
+            a = i.replace(' ', '').split(',')
+            new_position = [(cur_position[i] + float(a[i])) for i in range(3)]
+            print("New position: {}".format(new_position))
+            i = input('Confirm?')
+            if i.lower() == 'y':
+                self.set_position(new_position)
+                cur_position = new_position
+
 if __name__ == "__main__":
+    '''
     myArm = GoArm()
-    myArm.set_position(myArm.safe_position)
+    myArm.set_position()
     try:
-        '''
+    
         for v in [[1,1], [1,9], [7,7], [9,1], [5,5]]:
             myArm.set_position(myArm.above(myArm.board.get_real_vertex(v)))
             myArm.set_position(myArm.board.get_real_vertex(v))
             sleep(3)
             myArm.set_position(myArm.above(myArm.board.get_real_vertex(v)))
-        '''
+            
         a = myArm.board.get_real_vertex([1,1])
         b = myArm.board.get_real_vertex([3,3])
         myArm._move_stone(a, b)
         myArm._move_stone(b, a)
-
     finally:
-        myArm.set_position(myArm.safe_position)
-
-
-
+        myArm.set_position()
     '''
-    cur_position = myArm.safe_position
-    i = ''
-    while i != 'q':
-        print("Current position: {}".format(cur_position))
-        i = input('Adjustment: ')
-        a = i.split(',')
-        new_position = [(float(a[i]) + cur_position[i]) for i in range(3)]
-        print("New position: {}".format(new_position))
-        i = input('Confirm?')
-        if i.lower() == 'y':
-            myArm.set_position(new_position)
-            cur_position = new_position
-    '''
+
+
+    def get_bowl_vertex(a, b, c):
+        '''
+        b.c
+        .x.
+        x.x
+        .x.
+        a.x
+        '''
+
+        res = []
+        col = 6
+        for i in range(col):
+            v = [int(a[j] + i*( (b[j] - a[j])/(col - 1) ) ) for j in range(3)]
+            res.append(v)
+
+        for i in range(col):
+            v = [int(res[i][j] + (c[j] - b[j])) for j in range(3)]
+            res.append(v)
+
+        for i in range(col-1):
+            v = [round((res[col+i+1][j] + res[i][j]) / 2) for j in range(3)]
+            res.append(v)
+        return res
+
+    r = get_bowl_vertex([1,1,1],[1,6,1],[3,6,1])
+
+    print(r[:6])
+    print('     {}'.format(r[12:]))
+    print(r[6:12])
+
+
