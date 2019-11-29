@@ -7,16 +7,21 @@ LOG = getLogger(__name__)
 
 
 class GoArm:
-    safe_position = [101, -7, 45]
+    safe_position = [120, 0, 70]
+    cam_position = [220, 0, 195]
     retry_allowed = 1
 
     def __init__(self, conffile=r'C:\work\goArm\experiments\goArm\env\env.yaml'):
-        self.board = Board(conffile=conffile)
-        self.stones = Stones(conffile=conffile)
-        self.max_height = max(self.board.max_height, self.stones.max_height) + 20
+        self.config_file = conffile
+        self._read_env()
         self.arm = uarm.SwiftAPI(port='COM4', filters={'hwid': 'USB VID:PID=0403:6001 SER=A1068MLHA'}, callback_thread_pool_size=1)
         self.arm.waiting_ready()
         LOG.info("Arm fully initialised")
+
+    def _read_env(self):
+        self.board = Board(conffile=self.config_file)
+        self.stones = Stones(conffile=self.config_file)
+        self.max_height = max(self.board.max_height, self.stones.max_height) + 20
 
     def _vertex_to_real(self, vertex):
         if vertex is None:
@@ -32,8 +37,8 @@ class GoArm:
             # this is GTP notation most likely, to be implemented
             return
 
-    def above(self, vertex):
-        return [vertex[0], vertex[1], self.max_height]
+    def above(self, vertex, z=None):
+        return [vertex[0], vertex[1], vertex[2] + z if z else self.max_height]
 
     def _run_arm_command(self, command, *args, **kwargs):
         attempts = 0
@@ -65,7 +70,7 @@ class GoArm:
     def _move_stone(self, a, b):
         def pick_or_drop_stone(vertex, pick=True):
             self.set_position(self.above(vertex))
-            self.set_position(vertex)
+            self.set_position(vertex if pick else self.above(vertex, z=3))
             self.set_pump(on=pick)
             self.set_position(self.above(vertex))
         pick_or_drop_stone(a, pick=True)
@@ -130,30 +135,37 @@ class GoArm:
             new_position = [(cur_position[i] + float(a[i])) for i in range(3)]
             print("New position: {}".format(new_position))
             i = input('Confirm?')
-            if i.lower() == 'y':
+            if i == '' or i.lower() == 'y':
                 self.set_position(new_position)
                 cur_position = new_position
 
+    def _refpoint(self):
+        LOG.info(self.arm.set_servo_detach())
+        input("Ready?")
+        LOG.info(self.arm.send_cmd_sync('M2401'))
+        LOG.info(self.arm.set_servo_attach())
+        self.set_position()
+        LOG.info("Moved to: {}".format(self.safe_position))
+        LOG.info("Self esteem coords: {}".format(self._get_current_position()))
+
 if __name__ == "__main__":
-    '''
     myArm = GoArm()
     myArm.set_position()
     try:
-    
+        '''
         for v in [[1,1], [1,9], [7,7], [9,1], [5,5]]:
             myArm.set_position(myArm.above(myArm.board.get_real_vertex(v)))
             myArm.set_position(myArm.board.get_real_vertex(v))
             sleep(3)
             myArm.set_position(myArm.above(myArm.board.get_real_vertex(v)))
-            
+        '''    
         a = myArm.board.get_real_vertex([1,1])
         b = myArm.board.get_real_vertex([3,3])
         myArm._move_stone(a, b)
         myArm._move_stone(b, a)
+
     finally:
         myArm.set_position()
-    '''
-
 
     def get_bowl_vertex(a, b, c):
         '''
@@ -178,9 +190,11 @@ if __name__ == "__main__":
             v = [round((res[col+i+1][j] + res[i][j]) / 2, 1) for j in range(3)]
             res.append(v)
         return res
-
-    r = get_bowl_vertex([107.0, -108.5, 11.0],[232.0, -111.5, 15.0],[233.5, -150.5, 16.0])
-    print(r)
-    r = get_bowl_vertex([108.5, 149.5, 13.0], [233.0, 154.0, 17.0], [232.0, 114.0, 17.0])
-    print(r)
-
+    '''
+    r = get_bowl_vertex([120.75, -122.2, 29.2],[247.2, -120, 27.1],[247.2, -160.3, 27.2])
+    for i in r:
+        print("- {}".format(i))
+    r = get_bowl_vertex([119.4, 164.7, 29.3],[248.1, 162.3, 28.5],[248, 121, 28.2])
+    for i in r:
+        print("- {}".format(i))
+    '''

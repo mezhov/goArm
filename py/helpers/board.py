@@ -12,9 +12,9 @@ class Board:
             record = yaml.load(f)
             f.close()
             self.board_size = record["board size"]
-            self.x_shift = [(record["board"][2][i] - record["board"][1][i])/(self.board_size - 1) for i in range(3)]
-            self.y_shift = [(record["board"][0][i] - record["board"][1][i])/(self.board_size - 1) for i in range(3)]
-            self.reference_point = record["board"][1]
+            self.x_shift = [(record["board"][1][i] - record["board"][0][i])/(self.board_size - 1) for i in range(3)]
+            self.y_shift = [(record["board"][2][i] - record["board"][1][i])/(self.board_size - 1) for i in range(3)]
+            self.reference_point = record["board"][0]
             self.drop_stones = record.get("drop stones", [round(self.reference_point[i] - 2 * self.x_shift[i] + 2 * self.y_shift[i], 1) for i in range(3)])
             self.max_height = max(
                 record["board"][0][2],
