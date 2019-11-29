@@ -7,7 +7,7 @@ class SwiftAPI(object):
     def __init__(self, filters={'hwid': 'USB VID:PID=2341:0042'}, callback_thread_pool_size=1):
         pass
 
-    def set_pump(self, on):
+    def set_pump(self, *args, on, **kwargs):
         return "OK"
 
     def waiting_ready(self):

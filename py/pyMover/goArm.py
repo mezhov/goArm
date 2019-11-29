@@ -1,68 +1,91 @@
 from py.helpers.board import Board
 from py.helpers.stones import Stones
 from py.helpers.myloggers import getLogger
-from py.helpers import uarm
+import uarm
 from time import sleep
 LOG = getLogger(__name__)
 
 
 class GoArm:
-    safe_position = [101, -7, 45]
+    safe_position = [120, 0, 70]
+    cam_position = [220, 0, 195]
     retry_allowed = 1
 
-    def __init__(self):
-        self.board = Board(conffile=r'C:\work\goArm\experiments\goArm\env\env.yaml')
-        self.stones = Stones(conffile=r'C:\work\goArm\experiments\goArm\env\env.yaml')
-        self.max_height = max(self.board.max_height, self.stones.max_height) + 20
-        self.arm = uarm.SwiftAPI(filters={'hwid': 'USB VID:PID=0403:6001'}, callback_thread_pool_size=1)
+    def __init__(self, conffile=r'C:\work\goArm\experiments\goArm\env\env.yaml'):
+        self.config_file = conffile
+        self._read_env()
+        self.arm = uarm.SwiftAPI(port='COM4', filters={'hwid': 'USB VID:PID=0403:6001 SER=A1068MLHA'}, callback_thread_pool_size=1)
         self.arm.waiting_ready()
         LOG.info("Arm fully initialised")
 
-    def above(self, vertex):
-        return [vertex[0], vertex[1], self.max_height]
+    def _read_env(self):
+        self.board = Board(conffile=self.config_file)
+        self.stones = Stones(conffile=self.config_file)
+        self.max_height = max(self.board.max_height, self.stones.max_height) + 20
+
+    def _vertex_to_real(self, vertex):
+        if vertex is None:
+            return self.safe_position
+        elif type(vertex) is list:
+            if len(vertex) == 2:
+                return self.board.get_real_vertex(vertex)
+            elif len(vertex) == 3:
+                return vertex
+            else:
+                return
+        else:
+            # this is GTP notation most likely, to be implemented
+            return
+
+    def above(self, vertex, z=None):
+        return [vertex[0], vertex[1], vertex[2] + z if z else self.max_height]
 
     def _run_arm_command(self, command, *args, **kwargs):
         attempts = 0
         while attempts < self.retry_allowed:
             attempts += 1
-            r = command(*args, **kwargs)
+            r = command(*args, wait=True, **kwargs)
             if r == "OK":
                 LOG.debug("Command {} succeeded, args = {}{}".format(command.__name__, args, kwargs))
                 return True  # log success
             else:
-                LOG.error("Command {} failed, args = {}{}".format(command.__name__, args, kwargs))
+                LOG.error("Command {} failed with result {}, args = {}{}".format(command.__name__, r, args, kwargs))
                 self._safe_stop()
                 raise Exception("Emergency stop!")
 
-    def set_position(self, vertex):
-        return self._run_arm_command(self.arm.set_position, x=vertex[0], y=vertex[1], z=vertex[2], wait=True)
+    def set_position(self, vertex=None):
+        vertex = self._vertex_to_real(vertex)
+        return self._run_arm_command(self.arm.set_position, x=vertex[0], y=vertex[1], z=vertex[2], speed=100)
 
     def set_pump(self, on=True):
-        return self._run_arm_command(self.arm.set_pump, on=on)
+        res = self._run_arm_command(self.arm.set_pump, on=on)
+        # need to allow some time to free up suction cup
+        sleep(1)
+        return res
 
     def _safe_stop(self):
         LOG.warn("Safe stop invoked. Moving to safe position")
-        return self.set_position(self.safe_position)
+        self.set_position(self.safe_position)
 
-    def move_stone(self, a, b):
-        # moving stone from point a to point b
-        # above stone > to stone > catch stone > above stone > above target > to target > drop stone > above target
-        self.set_position(self.above(a))
-        self.set_position(a)
-        self.set_pump()
-        sleep(1)
-        self.set_position(self.above(a))
-        self.set_position(self.above(b))
-        self.set_position(b)
-        self.set_pump(on=False)
-        sleep(1)
-        self.set_position(self.above(b))
+    def _move_stone(self, a, b):
+        def pick_or_drop_stone(vertex, pick=True):
+            self.set_position(self.above(vertex))
+            self.set_position(vertex if pick else self.above(vertex, z=3))
+            self.set_pump(on=pick)
+            self.set_position(self.above(vertex))
+        pick_or_drop_stone(a, pick=True)
+        pick_or_drop_stone(b, pick=False)
         return True
 
     def make_move(self, colour, vertex, to_position=False):
-        real_vertex = self.board.get_real_vertex(vertex)
-        stone_vertex = self.stones.get_next_stone(colour)
-        res = self.move_stone(stone_vertex, real_vertex)
+        '''
+        A call to move stone from bowl to vertex
+        :param colour: stone colour
+        :param vertex: vertex as logical [i, j], GTP ('a1') or real [x, y, z]
+        :param to_position: bool. Return to safe position after move completed.
+        :return:
+        '''
+        res = self._move_stone(self.stones.get_next_stone(colour), self._vertex_to_real(vertex))
         if res:
             self.stones.move_done(colour)
         if to_position:
@@ -70,31 +93,64 @@ class GoArm:
         return res
 
     def remove_stone(self, vertex, to_position=False):
-        stone_vertex = self.board.get_real_vertex(vertex)
-        outta_board = self.board.drop_stones
-        res = self.move_stone(stone_vertex, outta_board)
+        res = self._move_stone(self._vertex_to_real(vertex), self.board.drop_stones)
         if to_position:
             self.set_position(self.safe_position)
         return res
 
     def put_stones(self, vertices):
+        '''
+        This method is to put a whole diagram to the empty board, doesn't respect sequence
+        :param vertices: {black: [vertex1, vertex2], white: [vertex1, vertex2]}
+        :return:
+        '''
         for colour in vertices:
             for vertex in vertices[colour]:
                 self.make_move(colour, vertex)
         self.set_position(self.safe_position)
 
     def play_sequence(self, sequence):
-        #[['put_stone', {'vertex': [], 'colour': 'black'}], ['remove_stone', {'vertex': []}]]
+        #[{'action': 'put_stone', 'vertex': [], 'colour': 'black'}, {'action': 'remove_stone', 'vertex': []}]
         for action in sequence:
-            if action[0] == 'put_stone':
-                self.make_move(colour=action[1]['colour'], vertex=action[1]['vertex'])
-            if action[0] == 'remove_stone':
-                self.remove_stone(vertex=action[1]['vertex'])
+            if action.get('action') in ['put_stone', 'put']:
+                self.make_move(colour=action.get('colour'), vertex=action.get('vertex'))
+            if action.get('action') in ['remove_stone', 'capture_stone', 'capture', 'remove']:
+                self.remove_stone(vertex=action.get('vertex'))
         self.set_position(self.safe_position)
+
+    def disconnect(self):
+        return self.arm.disconnect()
+
+    def _get_current_position(self):
+        return self.arm.get_position()
+
+    def _calibrate(self):
+        self.set_position()
+        cur_position = self._get_current_position()
+        i = ''
+        while i != 'q':
+            print("Current position: {}".format(self._get_current_position()))
+            i = input('Adjustment: ')
+            a = i.replace(' ', '').split(',')
+            new_position = [(cur_position[i] + float(a[i])) for i in range(3)]
+            print("New position: {}".format(new_position))
+            i = input('Confirm?')
+            if i == '' or i.lower() == 'y':
+                self.set_position(new_position)
+                cur_position = new_position
+
+    def _refpoint(self):
+        LOG.info(self.arm.set_servo_detach())
+        input("Ready?")
+        LOG.info(self.arm.send_cmd_sync('M2401'))
+        LOG.info(self.arm.set_servo_attach())
+        self.set_position()
+        LOG.info("Moved to: {}".format(self.safe_position))
+        LOG.info("Self esteem coords: {}".format(self._get_current_position()))
 
 if __name__ == "__main__":
     myArm = GoArm()
-    myArm.set_position(myArm.safe_position)
+    myArm.set_position()
     try:
         '''
         for v in [[1,1], [1,9], [7,7], [9,1], [5,5]]:
@@ -102,28 +158,43 @@ if __name__ == "__main__":
             myArm.set_position(myArm.board.get_real_vertex(v))
             sleep(3)
             myArm.set_position(myArm.above(myArm.board.get_real_vertex(v)))
-        '''
+        '''    
         a = myArm.board.get_real_vertex([1,1])
         b = myArm.board.get_real_vertex([3,3])
-        myArm.move_stone(a,b)
-        myArm.move_stone(b,a)
+        myArm._move_stone(a, b)
+        myArm._move_stone(b, a)
 
     finally:
-        myArm.set_position(myArm.safe_position)
+        myArm.set_position()
 
+    def get_bowl_vertex(a, b, c):
+        '''
+        b.c
+        .x.
+        x.x
+        .x.
+        a.x
+        '''
 
+        res = []
+        col = 6
+        for i in range(col):
+            v = [round(a[j] + i*( (b[j] - a[j])/(col - 1) ), 1) for j in range(3)]
+            res.append(v)
 
+        for i in range(col):
+            v = [round(res[i][j] + (c[j] - b[j]), 1) for j in range(3)]
+            res.append(v)
+
+        for i in range(col-1):
+            v = [round((res[col+i+1][j] + res[i][j]) / 2, 1) for j in range(3)]
+            res.append(v)
+        return res
     '''
-    cur_position = myArm.safe_position
-    i = ''
-    while i != 'q':
-        print("Current position: {}".format(cur_position))
-        i = input('Adjustment: ')
-        a = i.split(',')
-        new_position = [(float(a[i]) + cur_position[i]) for i in range(3)]
-        print("New position: {}".format(new_position))
-        i = input('Confirm?')
-        if i.lower() == 'y':
-            myArm.set_position(new_position)
-            cur_position = new_position
+    r = get_bowl_vertex([120.75, -122.2, 29.2],[247.2, -120, 27.1],[247.2, -160.3, 27.2])
+    for i in r:
+        print("- {}".format(i))
+    r = get_bowl_vertex([119.4, 164.7, 29.3],[248.1, 162.3, 28.5],[248, 121, 28.2])
+    for i in r:
+        print("- {}".format(i))
     '''
