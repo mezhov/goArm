@@ -18,7 +18,7 @@ class ProblemCollection:
         if self.counter[level] >= len(self.problems[level]):
             self.counter[level] = -1
         self.counter[level] += 1
-        return self.problems[level][self.counter[level]]
+        return self.problems[level][self.counter[level]-1]
 
 
 if __name__ == "__main__":

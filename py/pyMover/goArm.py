@@ -3,6 +3,8 @@ from py.helpers.stones import Stones
 from py.helpers.myloggers import getLogger
 import uarm
 from time import sleep
+import datetime
+import os
 LOG = getLogger(__name__)
 
 
@@ -11,12 +13,22 @@ class GoArm:
     cam_position = [220, 0, 195]
     retry_allowed = 1
 
-    def __init__(self, conffile=r'C:\work\goArm\experiments\goArm\env\env.yaml'):
+    def __init__(self, conffile=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'env', 'env.yaml')):
         self.config_file = conffile
         self._read_env()
-        self.arm = uarm.SwiftAPI(port='COM4', filters={'hwid': 'USB VID:PID=0403:6001 SER=A1068MLHA'}, callback_thread_pool_size=1)
+        self.arm = uarm.SwiftAPI(filters={'hwid': 'USB VID:PID=0403:6001'}, callback_thread_pool_size=1)
         self.arm.waiting_ready()
+        self.set_position()
+        self._cam = None
         LOG.info("Arm fully initialised")
+
+    @property
+    def cam(self):
+        return self._cam
+
+    @cam.setter
+    def cam(self, cam):
+        self._cam = cam
 
     def _read_env(self):
         self.board = Board(conffile=self.config_file)
@@ -46,6 +58,7 @@ class GoArm:
             attempts += 1
             r = command(*args, wait=True, **kwargs)
             if r == "OK":
+                self.last_time_moved = datetime.datetime.now()
                 LOG.debug("Command {} succeeded, args = {}{}".format(command.__name__, args, kwargs))
                 return True  # log success
             else:
@@ -119,6 +132,7 @@ class GoArm:
         self.set_position(self.safe_position)
 
     def disconnect(self):
+        self.set_position()
         return self.arm.disconnect()
 
     def _get_current_position(self):
@@ -147,6 +161,15 @@ class GoArm:
         self.set_position()
         LOG.info("Moved to: {}".format(self.safe_position))
         LOG.info("Self esteem coords: {}".format(self._get_current_position()))
+
+    def stretch(self, timeout=5):
+        '''
+        Makes arm move a bit from time to time to attract attention
+        :param timeout: int in minutes
+        '''
+
+        # TODO: yet to eb implemented
+        pass
 
 if __name__ == "__main__":
     myArm = GoArm()
