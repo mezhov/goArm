@@ -1,11 +1,12 @@
 from py.pyMover.goArm import GoArm
 from py.helpers import myloggers
 import yaml
+import os
 LOG = myloggers.getLogger(__name__)
 
 
 class ProblemCollection:
-    problems_file = r'C:\work\goArm\experiments\goArm\problems\problems.yaml'
+    problems_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'problems','problems.yaml')
     problems = {}
     counter = {}
 
