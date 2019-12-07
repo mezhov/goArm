@@ -8,7 +8,7 @@ def getLogger(name):
     fh = logging.FileHandler('log.txt')
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    ch.setLevel(logging.INFO)
     fh.setFormatter(formatter)
     ch.setFormatter(formatter)
     LOG.addHandler(fh)
