@@ -49,45 +49,91 @@ class GoArm:
             # this is GTP notation most likely, to be implemented
             return
 
-    def above(self, vertex, z=None):
+    def above(self, vertex=None, z=None):
+        if vertex is None:
+            vertex = self._get_current_position()
         return [vertex[0], vertex[1], vertex[2] + z if z else self.max_height]
 
     def _run_arm_command(self, command, *args, **kwargs):
         attempts = 0
         while attempts < self.retry_allowed:
             attempts += 1
-            r = command(*args, wait=True, **kwargs)
-            if r == "OK":
-                self.last_time_moved = datetime.datetime.now()
-                LOG.debug("Command {} succeeded, args = {}{}".format(command.__name__, args, kwargs))
-                return True  # log success
+            if 'wait' in kwargs.keys():
+                wait = kwargs['wait']
+                del(kwargs['wait'])
             else:
-                LOG.error("Command {} failed with result {}, args = {}{}".format(command.__name__, r, args, kwargs))
-                self._safe_stop()
-                raise Exception("Emergency stop!")
+                wait = True
 
-    def set_position(self, vertex=None):
+            if wait:
+                r = command(*args, wait=True, **kwargs)
+                if r == "OK":
+                    self.last_time_moved = datetime.datetime.now()
+                    LOG.debug("Command {} succeeded, args = {}{}".format(command.__name__, args, kwargs))
+                    return True  # log success
+                else:
+                    LOG.error("Command {} failed with result {}, args = {}{}".format(command.__name__, r, args, kwargs))
+                    self._safe_stop()
+                    raise Exception("Emergency stop!")
+            else:
+                command(*args, wait=False, **kwargs)
+                return True
+
+    def set_position(self, vertex=None, wait=True):
         vertex = self._vertex_to_real(vertex)
-        return self._run_arm_command(self.arm.set_position, x=vertex[0], y=vertex[1], z=vertex[2], speed=100)
+        return self._run_arm_command(self.arm.set_position, x=vertex[0], y=vertex[1], z=vertex[2], speed=200, wait=wait)
 
     def set_pump(self, on=True):
         res = self._run_arm_command(self.arm.set_pump, on=on)
         # need to allow some time to free up suction cup
-        sleep(1)
+        if on is False:
+            sleep(1)
         return res
 
     def _safe_stop(self):
         LOG.warn("Safe stop invoked. Moving to safe position")
-        self.set_position(self.safe_position)
+        self.set_pump(on=False)
+        self.set_position()
+
+    def _capture_stone(self, vertex=None, above=4, use_limit_switch=True):
+        '''
+        A function to pick a stone from defined coordinates
+        :param vertex: coordinates in real, current if no coord given
+        :param above: Amount of mm above object to start adjusting. Adjustment range is always twice of above distance.
+        :param use_limit_switch: Boolean to use adjusting or not.
+        :return: True if stone captured
+        '''
+
+        STEP = 2  # mm
+
+        res = False
+        if vertex:
+            self.set_position(self.above(vertex), wait=False)
+            self.set_position(self.above(vertex, above))
+
+        adj_limit = above*2 if use_limit_switch else 0
+        i = 0
+        while i <= adj_limit - STEP or adj_limit == 0:
+            if adj_limit == 0 or self.arm.get_limit_switch():
+                res = self.set_pump(on=True)
+                break
+            self.set_position(self.above(z=-STEP), wait=False)
+            i += STEP
+
+        if vertex:
+            self.set_position(self.above(vertex), wait=False)
+        return res
+
+    def _release_stone(self, vertex=None):
+        if vertex:
+            self.set_position(self.above(vertex), wait=False)
+            self.set_position(self.above(vertex, 5))
+        self.set_pump(on=False)
+        if vertex:
+            self.set_position(self.above(vertex), wait=False)
 
     def _move_stone(self, a, b):
-        def pick_or_drop_stone(vertex, pick=True):
-            self.set_position(self.above(vertex))
-            self.set_position(vertex if pick else self.above(vertex, z=3))
-            self.set_pump(on=pick)
-            self.set_position(self.above(vertex))
-        pick_or_drop_stone(a, pick=True)
-        pick_or_drop_stone(b, pick=False)
+        self._capture_stone(a)
+        self._release_stone(b)
         return True
 
     def make_move(self, colour, vertex, to_position=False):
@@ -102,13 +148,13 @@ class GoArm:
         if res:
             self.stones.move_done(colour)
         if to_position:
-            self.set_position(self.safe_position)
+            self.set_position()
         return res
 
     def remove_stone(self, vertex, to_position=False):
         res = self._move_stone(self._vertex_to_real(vertex), self.board.drop_stones)
         if to_position:
-            self.set_position(self.safe_position)
+            self.set_position()
         return res
 
     def put_stones(self, vertices):
@@ -120,7 +166,7 @@ class GoArm:
         for colour in vertices:
             for vertex in vertices[colour]:
                 self.make_move(colour, vertex)
-        self.set_position(self.safe_position)
+        self.set_position()
 
     def play_sequence(self, sequence):
         #[{'action': 'put_stone', 'vertex': [], 'colour': 'black'}, {'action': 'remove_stone', 'vertex': []}]
@@ -129,7 +175,7 @@ class GoArm:
                 self.make_move(colour=action.get('colour'), vertex=action.get('vertex'))
             if action.get('action') in ['remove_stone', 'capture_stone', 'capture', 'remove']:
                 self.remove_stone(vertex=action.get('vertex'))
-        self.set_position(self.safe_position)
+        self.set_position()
 
     def disconnect(self):
         self.set_position()
@@ -159,7 +205,7 @@ class GoArm:
         LOG.info(self.arm.send_cmd_sync('M2401'))
         LOG.info(self.arm.set_servo_attach())
         self.set_position()
-        LOG.info("Moved to: {}".format(self.safe_position))
+        LOG.info("Moved to: {}".format())
         LOG.info("Self esteem coords: {}".format(self._get_current_position()))
 
     def stretch(self, timeout=5):
