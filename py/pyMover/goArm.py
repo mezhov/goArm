@@ -126,7 +126,7 @@ class GoArm:
     def _release_stone(self, vertex=None):
         if vertex:
             self.set_position(self.above(vertex), wait=False)
-            self.set_position(self.above(vertex, 5))
+            self.set_position(self.above(vertex, 7))
         self.set_pump(on=False)
         if vertex:
             self.set_position(self.above(vertex), wait=False)
@@ -217,6 +217,7 @@ class GoArm:
         # TODO: yet to eb implemented
         pass
 
+
 if __name__ == "__main__":
     myArm = GoArm()
     myArm.set_position()
@@ -228,10 +229,10 @@ if __name__ == "__main__":
             sleep(3)
             myArm.set_position(myArm.above(myArm.board.get_real_vertex(v)))
         '''    
-        a = myArm.board.get_real_vertex([1,1])
-        b = myArm.board.get_real_vertex([3,3])
+        a = myArm.board.get_real_vertex([5,5])
+        b = myArm.board.get_real_vertex([1,1])
+
         myArm._move_stone(a, b)
-        myArm._move_stone(b, a)
 
     finally:
         myArm.set_position()
